@@ -1,2 +1,6 @@
-# Build artifacts
+# Terraform
+*.tfstate*
+.terraform
+
+# Artifacts
 build/

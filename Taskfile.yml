@@ -15,35 +15,80 @@ tasks:
     cmds:
       - task: test
 
-  generate:
-    desc: Generate test fakes
-    cmds:
-      - go generate ./...
-
   test:
-    desc: Run test suite
+    desc: Run tests.
     cmds:
-      - gofmt -s -l -w .
-      - go vet -v ./...
-      - go test -race -v ./...
-
-  build:
-    desc: Build the default binary
-    cmds:
-      - task: test
-      - go build -o {{.BUILD_DIR}}/{{.BUILD_BIN}}{{exeExt}} -ldflags="-s -w -X=main.version={{.BUILD_VERSION}}" -v cmd/{{.BUILD_BIN}}/main.go
-    env:
-      CGO_ENABLED: "0"
-      GOOS: "{{OS}}"
-      GOARCH: "{{ARCH}}"
-
-  clean:
-    desc: Clean build directory
-    cmds:
-      - rm {{.BUILD_DIR}}/*
+      - task: build
+      - task: test-terraform
 
   e2e:
     desc: Run E2E test suite
     cmds:
-    - task: test
-    - go test -race -v ./... -tags=e2e
+      - task: test
+      - go test -race -v ./... -tags=e2e
+
+  build:
+    desc: Build binaries.
+    cmds:
+      - task: go-generate
+      - task: test-go
+      - task: go-build
+        vars: {BINARY: sidecred, OS: '{{OS}}', ARCH: '{{ARCH}}'}
+
+  go-generate:
+    desc: Generate test fakes
+    cmds:
+    - go generate ./...
+
+  go-build:
+    cmds:
+    - mkdir -p build
+    - GOOS={{.OS}} GOARCH={{.ARCH}} go build -o build/{{.BINARY}}-{{.OS}}-{{.ARCH}}{{exeExt}} -ldflags="-buildid= -s -w" -trimpath -v cmd/{{.BINARY}}/main.go
+    env:
+      CGO_ENABLED: '0'
+
+  test-go:
+    desc: Run tests for all Go code.
+    silent: true
+    cmds:
+    - gofmt -s -l -w .
+    - go vet -v ./...
+    - go test -race -v ./...
+
+  test-terraform:
+      desc: Run tests for all terraform directories.
+      silent: true
+      env:
+        DIRECTORIES:
+          sh: find . -type f -name '*.tf' -not -path "**/.terraform/*" -print0 | xargs -0I {} dirname {} | sort -u
+      cmds:
+      - |
+        BOLD=$(tput bold)
+        NORM=$(tput sgr0)
+
+        CWD=$PWD
+
+        for d in $DIRECTORIES; do 
+          cd $d
+          echo "${BOLD}$PWD:${NORM}"
+
+          if ! terraform fmt -check=true -list=false -recursive=false; then
+            echo "  ✗ terraform fmt" && exit $?
+          else
+            echo "  √ terraform fmt"
+          fi
+
+          if ! terraform init -backend=false -input=false -get=true -get-plugins=true -no-color > /dev/null; then
+            echo "  ✗ terraform init" && exit $?
+          else
+            echo "  √ terraform init"
+          fi
+
+          if ! terraform validate > /dev/null; then
+            echo "  ✗ terraform validate" && exit $?
+          else
+            echo "  √ terraform validate"
+          fi
+
+          cd $CWD
+        done
