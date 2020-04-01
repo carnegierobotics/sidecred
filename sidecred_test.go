@@ -144,6 +144,11 @@ func TestProcess(t *testing.T) {
 			assert.Equal(t, tc.expectedDestroyCalls, provider.DestroyCallCount(), "destroy calls")
 
 			for _, p := range state.Providers {
+				// The RotationWindow is computed from an invocation of Now(),
+				// so we must ignore it here
+				for _, r := range p.Resources {
+					r.RotationWindow = nil
+				}
 				assert.Equal(t, tc.expectedResources, p.Resources)
 			}
 

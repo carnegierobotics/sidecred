@@ -44,6 +44,19 @@ func (r *Request) hasValidCredentials(resource *Resource) bool {
 	return true
 }
 
+// isRotationWindowOpen returns true if the rotation window is set,
+// and the current time is within the window. It must be called
+// on credentials that are valid.
+func (r *Request) isRotationWindowOpen(resource *Resource) bool {
+	if resource.RotationWindow == nil {
+		return false
+	}
+	if resource.Expiration.Add(-(*resource.RotationWindow)).Before(time.Now()) {
+		return true
+	}
+	return false
+}
+
 // UnmarshalConfig is a convenience method for unmarshalling the JSON config into
 // a config structure for a sidecred.Provider. When no config has been passed in
 // the request, no operation is performed by this function.
@@ -247,7 +260,11 @@ Loop:
 		for _, resource := range state.GetResourcesByID(p.Type(), r.Name) {
 			if r.hasValidCredentials(resource) {
 				log.Info("found existing credentials", zap.String("name", r.Name))
-				continue Loop
+				if !r.isRotationWindowOpen(resource) {
+					log.Info("rotation window not open for credentials", zap.String("name", r.Name))
+					continue Loop
+				}
+				log.Info("rotation window open for credentials", zap.String("name", r.Name))
 			}
 		}
 
@@ -260,7 +277,14 @@ Loop:
 			log.Error("no credentials returned by provider")
 			continue Loop
 		}
-		state.AddResource(p.Type(), newResource(r, creds[0].Expiration, metadata))
+
+		now := time.Now().UTC()
+		rotationWindow := creds[0].Expiration.Sub(now) / 2
+		if rotationWindow < 0 {
+			rotationWindow = 0
+		}
+
+		state.AddResource(p.Type(), newResource(r, creds[0].Expiration, rotationWindow, metadata))
 		log.Info("created new credentials", zap.Int("count", len(creds)))
 
 		for _, c := range creds {

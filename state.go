@@ -42,26 +42,28 @@ func (s *State) getProviderState(t ProviderType) (*providerState, bool) {
 }
 
 // newResource returns a new sidecred.Resource.
-func newResource(request *Request, expiration time.Time, metadata *Metadata) *Resource {
+func newResource(request *Request, expiration time.Time, rotationWindow time.Duration, metadata *Metadata) *Resource {
 	return &Resource{
-		ID:         request.Name,
-		Config:     request.Config,
-		Expiration: expiration,
-		Deposed:    false,
-		Metadata:   metadata,
-		InUse:      true,
+		ID:             request.Name,
+		Config:         request.Config,
+		Expiration:     expiration,
+		Deposed:        false,
+		Metadata:       metadata,
+		InUse:          true,
+		RotationWindow: &rotationWindow,
 	}
 }
 
 // Resource represents a resource provisioned by a sidecred.Provider as
 // part of creating the requested credentials.
 type Resource struct {
-	ID         string          `json:"id"`
-	Expiration time.Time       `json:"expiration"`
-	Deposed    bool            `json:"deposed"`
-	Config     json.RawMessage `json:"config,omitempty"`
-	Metadata   *Metadata       `json:"metadata,omitempty"`
-	InUse      bool            `json:"-"`
+	ID             string          `json:"id"`
+	Expiration     time.Time       `json:"expiration"`
+	Deposed        bool            `json:"deposed"`
+	Config         json.RawMessage `json:"config,omitempty"`
+	Metadata       *Metadata       `json:"metadata,omitempty"`
+	InUse          bool            `json:"-"`
+	RotationWindow *time.Duration  `json:"rotation_window"`
 }
 
 // AddResource stores a resource state for the given provider. The provider
